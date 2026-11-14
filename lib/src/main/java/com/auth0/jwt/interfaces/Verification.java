@@ -259,6 +259,44 @@ public interface Verification {
     Verification ignoreIssuedAt();
 
     /**
+     * Verifies whether the Type ("typ") header value equals the given value.
+     * This check is case-sensitive. If the JWT does not include a "typ" header, the verification fails.
+     *
+     * @param type the required Type value.
+     * @return this same Verification instance.
+     * @throws IllegalArgumentException if the type is {@code null} or empty.
+     */
+    default Verification withType(String type) throws IllegalArgumentException {
+        return withTypes(type);
+    }
+
+    /**
+     * Verifies whether the Type ("typ") header value matches any of the given values.
+     * This check is case-sensitive. If the JWT does not include a "typ" header, the verification fails.
+     * When this method is not called, the "typ" header is not validated.
+     *
+     * @param types the accepted Type values. The token's "typ" header must match at least one of them.
+     * @return this same Verification instance.
+     * @throws IllegalArgumentException if types is {@code null}, empty or contains {@code null}/empty values.
+     */
+    Verification withTypes(String... types) throws IllegalArgumentException;
+
+    /**
+     * Registers the names of the critical header extensions (listed in the JWT's "crit" header) that this
+     * verifier understands and is able to process.
+     * <p>
+     * Per <a href="https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.11">RFC 7515 section 4.1.11</a>,
+     * any JWT carrying a "crit" header must be rejected if it lists an extension that is not registered through
+     * this method, if the listed extension header is not actually present, or if the "crit" value is not a
+     * non-empty array of unique non-empty strings. JWTs that do not include a "crit" header are not affected.
+     *
+     * @param criticalExtensions the names of the critical header extensions this verifier can process.
+     * @return this same Verification instance.
+     * @throws IllegalArgumentException if the argument is {@code null}, empty or contains {@code null}/empty values.
+     */
+    Verification withCriticalExtensions(String... criticalExtensions) throws IllegalArgumentException;
+
+    /**
      * Creates a new and reusable instance of the JWTVerifier with the configuration already provided.
      *
      * @return a new {@link com.auth0.jwt.interfaces.JWTVerifier} instance.

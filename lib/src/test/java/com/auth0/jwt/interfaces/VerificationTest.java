@@ -46,6 +46,16 @@ public class VerificationTest {
         assertThat(((VerificationImplForTest)verification).expectedClaims, hasEntry("iss", new String[]{"string"}));
     }
 
+    @Test
+    public void withTypeDefaultImplShouldDelegateToWithTypes() {
+        Verification verification = new VerificationImplForTest()
+                .withType("at+jwt");
+
+        assertThat(verification, instanceOf(VerificationImplForTest.class));
+        VerificationImplForTest impl = (VerificationImplForTest) verification;
+        assertThat(impl.expectedClaims, hasEntry("typ", new String[]{"at+jwt"}));
+    }
+
     static class VerificationImplForTest implements Verification {
 
         private final Map<String, Object> expectedClaims = new HashMap<>();
@@ -160,6 +170,18 @@ public class VerificationTest {
         @Override
         public Verification ignoreIssuedAt() {
             return null;
+        }
+
+        @Override
+        public Verification withTypes(String... types) throws IllegalArgumentException {
+            expectedClaims.put("typ", types);
+            return this;
+        }
+
+        @Override
+        public Verification withCriticalExtensions(String... criticalExtensions) throws IllegalArgumentException {
+            expectedClaims.put("crit", criticalExtensions);
+            return this;
         }
 
         @Override

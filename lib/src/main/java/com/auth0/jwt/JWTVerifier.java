@@ -27,11 +27,18 @@ public final class JWTVerifier implements com.auth0.jwt.interfaces.JWTVerifier {
     private final Algorithm algorithm;
     final List<ExpectedCheckHolder> expectedChecks;
     private final JWTParser parser;
+    private final Set<String> acceptedTypes;
+    private final Set<String> knownCriticalExtensions;
 
-    JWTVerifier(Algorithm algorithm, List<ExpectedCheckHolder> expectedChecks) {
+    JWTVerifier(Algorithm algorithm, List<ExpectedCheckHolder> expectedChecks,
+                Set<String> acceptedTypes, Set<String> knownCriticalExtensions) {
         this.algorithm = algorithm;
         this.expectedChecks = Collections.unmodifiableList(expectedChecks);
         this.parser = new JWTParser();
+        this.acceptedTypes = acceptedTypes == null
+                ? Collections.emptySet() : Collections.unmodifiableSet(new HashSet<>(acceptedTypes));
+        this.knownCriticalExtensions = knownCriticalExtensions == null
+                ? Collections.emptySet() : Collections.unmodifiableSet(new HashSet<>(knownCriticalExtensions));
     }
 
     /**
@@ -59,6 +66,8 @@ public final class JWTVerifier implements com.auth0.jwt.interfaces.JWTVerifier {
         private final Map<String, Long> customLeeways;
         private boolean ignoreIssuedAt;
         private Clock clock;
+        private final Set<String> acceptedTypes;
+        private final Set<String> knownCriticalExtensions;
 
         BaseVerification(Algorithm algorithm) throws IllegalArgumentException {
             if (algorithm == null) {
@@ -69,6 +78,37 @@ public final class JWTVerifier implements com.auth0.jwt.interfaces.JWTVerifier {
             this.expectedChecks = new ArrayList<>();
             this.customLeeways = new HashMap<>();
             this.defaultLeeway = 0;
+            this.acceptedTypes = new LinkedHashSet<>();
+            this.knownCriticalExtensions = new LinkedHashSet<>();
+        }
+
+        @Override
+        public Verification withTypes(String... types) throws IllegalArgumentException {
+            assertValidHeaderValues(types, "The Type value cannot be null or empty.");
+            acceptedTypes.clear();
+            acceptedTypes.addAll(Arrays.asList(types));
+            return this;
+        }
+
+        @Override
+        public Verification withCriticalExtensions(String... criticalExtensions)
+                throws IllegalArgumentException {
+            assertValidHeaderValues(criticalExtensions,
+                    "The Critical Extension name cannot be null or empty.");
+            knownCriticalExtensions.clear();
+            knownCriticalExtensions.addAll(Arrays.asList(criticalExtensions));
+            return this;
+        }
+
+        private void assertValidHeaderValues(String[] values, String errorMessage) {
+            if (values == null || values.length == 0) {
+                throw new IllegalArgumentException(errorMessage);
+            }
+            for (String value : values) {
+                if (value == null || value.trim().isEmpty()) {
+                    throw new IllegalArgumentException(errorMessage);
+                }
+            }
         }
 
         @Override
@@ -286,7 +326,7 @@ public final class JWTVerifier implements com.auth0.jwt.interfaces.JWTVerifier {
         public JWTVerifier build(Clock clock) {
             this.clock = clock;
             addMandatoryClaimChecks();
-            return new JWTVerifier(algorithm, expectedChecks);
+            return new JWTVerifier(algorithm, expectedChecks, acceptedTypes, knownCriticalExtensions);
         }
 
         /**
@@ -467,9 +507,58 @@ public final class JWTVerifier implements com.auth0.jwt.interfaces.JWTVerifier {
     @Override
     public DecodedJWT verify(DecodedJWT jwt) throws JWTVerificationException {
         verifyAlgorithm(jwt, algorithm);
+        verifyHeader(jwt);
         algorithm.verify(jwt);
         verifyClaims(jwt, expectedChecks);
         return jwt;
+    }
+
+    private void verifyHeader(DecodedJWT jwt) {
+        verifyType(jwt);
+        verifyCriticalExtensions(jwt);
+    }
+
+    private void verifyType(DecodedJWT jwt) {
+        if (acceptedTypes.isEmpty()) {
+            return;
+        }
+        String type = jwt.getType();
+        if (type == null || !acceptedTypes.contains(type)) {
+            throw new JWTVerificationException(String.format(
+                    "The Token's Type 'typ' value '%s' is not in the list of accepted types %s.",
+                    type, acceptedTypes));
+        }
+    }
+
+    private void verifyCriticalExtensions(DecodedJWT jwt) {
+        Claim critClaim = jwt.getHeaderClaim(HeaderParams.CRITICAL);
+        if (critClaim.isMissing() || critClaim.isNull()) {
+            return;
+        }
+        List<String> criticalExtensions = critClaim.asList(String.class);
+        if (criticalExtensions == null || criticalExtensions.isEmpty()) {
+            throw new JWTVerificationException(
+                    "The Token's 'crit' header must be a non-empty array of header parameter names.");
+        }
+        Set<String> seen = new HashSet<>();
+        for (String extension : criticalExtensions) {
+            if (extension == null || extension.trim().isEmpty()) {
+                throw new JWTVerificationException(
+                        "The Token's 'crit' header cannot contain null or empty header parameter names.");
+            }
+            if (!seen.add(extension)) {
+                throw new JWTVerificationException(String.format(
+                        "The Token's 'crit' header lists the header parameter '%s' more than once.", extension));
+            }
+            if (!knownCriticalExtensions.contains(extension)) {
+                throw new JWTVerificationException(String.format(
+                        "The Token's 'crit' header lists the unsupported critical extension '%s'.", extension));
+            }
+            if (jwt.getHeaderClaim(extension).isMissing()) {
+                throw new JWTVerificationException(String.format(
+                        "The Token's 'crit' header lists '%s' but the header parameter is not present.", extension));
+            }
+        }
     }
 
     private void verifyAlgorithm(DecodedJWT jwt, Algorithm expectedAlgorithm) throws AlgorithmMismatchException {

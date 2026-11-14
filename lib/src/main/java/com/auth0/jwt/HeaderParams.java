@@ -26,4 +26,10 @@ public final class HeaderParams {
      * The key ID of a JWT used to specify the key for signature validation.
      */
     public static final String KEY_ID = "kid";
+
+    /**
+     * The "crit" (critical) header parameter that lists the headers that
+     * the JWT implementation must understand and process.
+     */
+    public static final String CRITICAL = "crit";
 }
